@@ -211,20 +211,3 @@ The project uses multiple metrics to evaluate model performance:
 
 ---
 
-## 📝 License
-
-This project is for educational purposes. Please ensure you have the right to use the datasets.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
----
-
-## 📧 Contact
-
-For questions or issues, please open an issue on the repository.
-
----
