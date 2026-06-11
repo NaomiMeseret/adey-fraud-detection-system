@@ -1,10 +1,12 @@
 # Scripts
 
-This directory contains utility scripts for the fraud detection project.
+This folder contains helper scripts for running tests and project checks.
 
-Scripts can be used for:
+Use the main runner from the project root:
 
-- Data preprocessing automation
-- Model training pipelines
-- Batch predictions
-- Data validation
+```bash
+python scripts/run_tests.py --unit
+python scripts/run_tests.py --integration
+python scripts/run_tests.py --quality
+python scripts/run_tests.py --security
+```
