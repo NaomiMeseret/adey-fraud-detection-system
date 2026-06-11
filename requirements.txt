@@ -41,8 +41,7 @@ sphinx>=6.0.0
 sphinx-rtd-theme>=1.2.0
 sphinx-autodoc-typehints>=1.23.0
 
-# Data profiling
-pandas-profiling>=3.6.0
+# Data validation
 great-expectations>=0.15.0
 
 # Performance monitoring
@@ -51,5 +50,3 @@ memory-profiler>=0.60.0
 # Utilities
 tqdm>=4.65.0
 python-dotenv>=1.0.0
-
-

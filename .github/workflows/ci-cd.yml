@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
@@ -6,295 +6,81 @@ on:
   pull_request:
     branches: [main, master, develop]
 
-env:
-  PYTHON_DEFAULT_VERSION: "3.10"
-
 jobs:
-  code-quality:
+  quality:
     runs-on: ubuntu-latest
-    name: Code Quality Checks
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_DEFAULT_VERSION }}
-      
-      - name: Cache pip dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-      
+          python-version: "3.12"
+          cache: pip
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install flake8 black isort mypy bandit safety
-      
-      - name: Lint with flake8
-        run: |
-          # Stop the build if there are Python syntax errors or undefined names
-          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-          flake8 src/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      
-      - name: Check code formatting with black
-        run: |
-          black --check --diff src/ tests/
-      
-      - name: Check import sorting with isort
-        run: |
-          isort --check-only --diff src/ tests/
-      
-      - name: Type checking with mypy
-        run: |
-          mypy src/ --ignore-missing-imports --no-strict-optional || true
-      
-      - name: Security check with bandit
-        run: |
-          bandit -r src/ -f json -o bandit-report.json || true
-          bandit -r src/
-      
-      - name: Check dependencies for security vulnerabilities
-        run: |
-          safety check --json --output safety-report.json || true
-          safety check
-      
-      - name: Upload security reports
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: security-reports
-          path: |
-            bandit-report.json
-            safety-report.json
+
+      - name: Run quality checks
+        run: python scripts/run_tests.py --quality
 
   test:
     runs-on: ubuntu-latest
-    name: Test Suite
-    needs: code-quality
+    needs: quality
+
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11"]
-    
+        python-version: ["3.10", "3.11", "3.12"]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      
-      - name: Cache pip dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python-version }}-
-            ${{ runner.os }}-pip-
-      
+          cache: pip
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest-xdist
-      
-      - name: Run unit tests
-        run: |
-          pytest tests/ -m "unit" -v --cov=src --cov-report=xml --cov-report=html --cov-report=term-missing
-      
-      - name: Run integration tests
-        run: |
-          pytest tests/ -m "integration" -v --cov=src --cov-append --cov-report=xml --cov-report=html
-      
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
-        if: matrix.python-version == env.PYTHON_DEFAULT_VERSION
-        with:
-          file: ./coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-      
-      - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v3
-        if: matrix.python-version == env.PYTHON_DEFAULT_VERSION
-        with:
-          name: coverage-report-${{ matrix.python-version }}
-          path: htmlcov/
 
-  performance-test:
+      - name: Run tests with coverage
+        run: |
+          pytest --cov=src --cov-report=term-missing --cov-report=xml -q
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.12'
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  performance:
     runs-on: ubuntu-latest
-    name: Performance Tests
     needs: test
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_DEFAULT_VERSION }}
-      
+          python-version: "3.12"
+          cache: pip
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest-benchmark memory-profiler
-      
-      - name: Run performance benchmarks
-        run: |
-          pytest tests/test_integration.py::TestIntegration::test_pipeline_performance_benchmarks -v --benchmark-only --benchmark-json=benchmark-results.json
-      
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v3
-        with:
-          name: benchmark-results
-          path: benchmark-results.json
 
-  data-validation:
-    runs-on: ubuntu-latest
-    name: Data Validation
-    needs: code-quality
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_DEFAULT_VERSION }}
-      
-      - name: Install dependencies
+      - name: Run performance test
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pandas-profiling great-expectations
-      
-      - name: Create sample data for validation
-        run: |
-          mkdir -p data/raw
-          python -c "
-          import pandas as pd
-          import numpy as np
-          
-          # Create sample e-commerce data
-          np.random.seed(42)
-          n_samples = 100
-          df = pd.DataFrame({
-              'user_id': range(1, n_samples + 1),
-              'signup_time': pd.date_range('2023-01-01', periods=n_samples, freq='H'),
-              'purchase_time': pd.date_range('2023-01-01', periods=n_samples, freq='H') + pd.to_timedelta(np.random.randint(1, 24, n_samples), unit='H'),
-              'purchase_value': np.random.uniform(10, 500, n_samples),
-              'device_id': [f'device_{i}' for i in np.random.randint(1, 20, n_samples)],
-              'source': np.random.choice(['SEO', 'Ads', 'Direct'], n_samples),
-              'browser': np.random.choice(['Chrome', 'Safari', 'Firefox'], n_samples),
-              'sex': np.random.choice(['M', 'F'], n_samples),
-              'age': np.random.randint(18, 65, n_samples),
-              'ip_address': [f'192.168.{np.random.randint(1, 255)}.{np.random.randint(1, 255)}' for _ in range(n_samples)],
-              'class': np.random.choice([0, 1], n_samples, p=[0.95, 0.05])
-          })
-          df.to_csv('data/raw/Fraud_Data.csv', index=False)
-          
-          # Create sample IP mapping
-          ip_df = pd.DataFrame({
-              'lower_bound_ip_address': ['192.168.1.0', '192.168.2.0'],
-              'upper_bound_ip_address': ['192.168.1.255', '192.168.2.255'],
-              'country': ['USA', 'Canada']
-          })
-          ip_df.to_csv('data/raw/IpAddress_to_Country.csv', index=False)
-          "
-      
-      - name: Run data validation tests
-        run: |
-          pytest tests/test_data_loader.py -v -m "data"
-      
-      - name: Generate data profile report
-        run: |
-          python -c "
-          import pandas as pd
-          from pandas_profiling import ProfileReport
-          
-          df = pd.read_csv('data/raw/Fraud_Data.csv')
-          profile = ProfileReport(df, title='E-commerce Data Profile')
-          profile.to_file('data-profile-report.html')
-          "
-      
-      - name: Upload data profile
-        uses: actions/upload-artifact@v3
-        with:
-          name: data-profile-report
-          path: data-profile-report.html
-
-  build-docs:
-    runs-on: ubuntu-latest
-    name: Build Documentation
-    needs: code-quality
-    if: github.event_name == 'push'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_DEFAULT_VERSION }}
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints
-      
-      - name: Build documentation
-        run: |
-          # Create docs directory structure
-          mkdir -p docs/source
-          echo "Documentation" > docs/source/index.rst
-          
-          # Generate API documentation
-          sphinx-apidoc -o docs/source src/
-          
-          # Build HTML docs
-          cd docs
-          make html
-      
-      - name: Upload documentation
-        uses: actions/upload-artifact@v3
-        with:
-          name: documentation
-          path: docs/build/html/
-
-  notify:
-    runs-on: ubuntu-latest
-    name: Notify Results
-    needs: [code-quality, test, performance-test, data-validation]
-    if: always()
-    
-    steps:
-      - name: Notify success
-        if: ${{ needs.code-quality.result == 'success' && needs.test.result == 'success' }}
-        run: |
-          echo "✅ All checks passed successfully!"
-          echo "📊 Test coverage reports are available in artifacts"
-          echo "🔒 Security scan completed"
-          echo "📈 Performance benchmarks completed"
-      
-      - name: Notify failure
-        if: ${{ needs.code-quality.result == 'failure' || needs.test.result == 'failure' }}
-        run: |
-          echo "❌ Some checks failed!"
-          echo "Please check the job logs for details"
-          exit 1
+          pytest tests/test_integration.py::TestIntegration::test_pipeline_performance_benchmarks -v
