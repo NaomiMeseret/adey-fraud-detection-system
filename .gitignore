@@ -52,6 +52,11 @@ models/*.hdf5
 *.log
 logs/
 
+# Test coverage
+.coverage
+coverage.xml
+htmlcov/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -59,5 +64,4 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
-
 
